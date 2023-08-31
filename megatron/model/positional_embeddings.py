@@ -26,7 +26,7 @@ def apply_rotary_emb(
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
     position_ids: Optional[torch.Tensor] = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
+):
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
 
