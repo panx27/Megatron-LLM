@@ -8,6 +8,7 @@ import os
 import torch
 
 import megatron
+from megatron.metrics import METRICS
 from megatron.model.enums import PositionEmbeddingType
 
 
@@ -90,6 +91,9 @@ def validate_args(args, defaults={}):
     if args.recompute_activations:
         args.recompute_granularity = 'selective'
     del args.recompute_activations
+    if args.metrics == ["all"]:
+        args.metrics = list(METRICS)
+
 
     # Set input defaults.
     for key in defaults:
@@ -175,7 +179,8 @@ def validate_args(args, defaults={}):
     # across batches/microbatches. Due to additional communication overhead
     # during pipeline parallelism, it should not be set if sequence length
     # is constant during training.
-    args.variable_seq_lengths = False
+    if args.variable_seq_lengths is None:
+        args.variable_seq_lengths = False
 
     # Iteration-based training.
     if args.train_iters:
@@ -537,6 +542,8 @@ def _add_logging_args(parser):
                        help="If set, we resume logging for the id given instead of launching a new run (errors if id given and resume=False).")
     group.add_argument("--wandb_api_key",type=str,default=None,
                        help="API key for Weights & Biases, needs to be set if not set in environment variable `WANDB_API_KEY`.")
+    group.add_argument("--metrics", default=[], nargs="+", choices=list(METRICS) + ["all"],
+                       help="Metrics to report when logging")
     return parser
 
 
@@ -633,6 +640,9 @@ def _add_training_args(parser):
                        help='Total number of iterations to train over all '
                        'training runs. Note that either train_iters or '
                        'train_samples should be provided.')
+    group.add_argument('--skip_iters', type=int, nargs='*', default=[],
+                        help=('One or more iterations to ignore. Neither the forward '
+                              'nor backward pass will be computed for this iterations'))
     group.add_argument('--train_samples', type=int, default=None,
                        help='Total number of samples to train over all '
                        'training runs. Note that either train_iters or '
@@ -918,6 +928,13 @@ def _add_data_args(parser):
                        help='comma separated list of special vocab ids to add to the tokenizer')
     group.add_argument('--seq_length', type=int, default=None,
                        help='Maximum sequence length to process.')
+    group.add_argument('--variable_seq_lengths', action='store_true', default=None,
+                       help='Enable variable sequence lengths.')
+    group.add_argument('--scalar_loss_mask', type=float, default=0.0,
+                       help=('Instruction-tuning argument: Scalar to multiply the '
+                             'loss of the "masked out" tokens (usually the user '
+                             'tokens, not assistant ones). Set to zero (default) '
+                             'to completely remove the loss of said tokens'))
     group.add_argument('--encoder_seq_length', type=int, default=None,
                        help='Maximum encoder sequence length to process.'
                        'This should be exclusive of --seq_length')

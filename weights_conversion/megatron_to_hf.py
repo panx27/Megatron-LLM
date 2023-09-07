@@ -1,3 +1,12 @@
+"""
+Convert megatron checkpoints to huggingface weights.
+
+This script will also convert the tokenizer configured.
+Set the `--input_dir` to the megatron checkpoint root (i.e. where the
+`latest_checkpointed_iteration.txt` file is located) and  `--output_dir` to
+the directory where the huggingface weights should be stored.
+"""
+
 # Copyright 2022 EleutherAI and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,31 +34,9 @@ import torch
 from tqdm.auto import trange
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizerFast, FalconConfig, FalconForCausalLM, AutoTokenizer
 
-from permute_qkv import permute_qkv
+from utils.permute_qkv import permute_qkv
 
 from megatron.tokenizer import build_tokenizer
-
-
-"""
-Sample usage:
-
-```
-python3 /pure-mlo-scratch/sfan/model-parallel-trainer/llama2megatron/convert_llama2hf.py \
-    --input_dir /pure-mlo-scratch/llama/ --output_dir /pure-mlo-scratch/llama/converted_HF_7B
-```
-
-Thereafter, models can be loaded via:
-
-```py
-from transformers import LlamaForCausalLM, LlamaTokenizer
-
-model = LlamaForCausalLM.from_pretrained("/output/path")
-tokenizer = LlamaTokenizer.from_pretrained("/output/path")
-```
-
-Important note: you need to be able to host the whole model in RAM to execute this script (even if the biggest versions
-come in several checkpoints they each contain a part of each weight of the model, so we need to load them all in RAM).
-"""
 
 
 def write_json(text, path):
@@ -451,7 +438,7 @@ def main():
     # make sure megatron is importable
 
     parser = ArgumentParser()
-    parser.add_argument("--input_dir", help="Location of LLaMA_Megatron weights",
+    parser.add_argument("--input_dir", help="Location of Megatron weights",
                         required=True)
     parser.add_argument("--num_output_shards", type=int, default=1)
     parser.add_argument("--model", choices={"falcon", "llama", "llama2", "codellama"},
@@ -462,18 +449,20 @@ def main():
     parser.add_argument("--vocab_file", type=str, help="Path to the vocab file")
     parser.add_argument("--vocab_extra_ids_list",
                         help="comma separated list of special vocab ids to add to the tokenizer")
-    parser.add_argument("--override_special_tokens", nargs="*",
+    parser.add_argument("--override_special_tokens", nargs="*", default=[],
                         help=("One or more arguments to override special tokens. "
                               "Syntax set as `key=value`, e.g. `eos=<|im_end|>`. "
                               "Overrides available only bos, cls, eos, mask, pad, sep, unk."))
     
     args = parser.parse_args()
     if args.model in {"llama", "llama2", "codellama"}:
+        eps = 1e-6 if args.model == "llama" else 1e-5
         rope_theta = 1e6 if args.model == "codellama" else 1e4
         write_llama_model(
             model_path=args.output_dir,
             input_base_path=args.input_dir,
             num_output_shards=args.num_output_shards,
+            norm_eps=eps,
             rope_theta=rope_theta,
         )
     elif args.model == "falcon":

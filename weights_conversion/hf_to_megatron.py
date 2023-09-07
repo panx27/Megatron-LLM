@@ -1,3 +1,39 @@
+"""
+Convert weights from models in other formats (primairly huggingface) to megatron checkpoints.
+
+This script supports converting Falcon, LLaMa and LLaMa 2 weights to megatron checkpoints.
+Depending on the model to convert, the inputs might differ.
+- Falcon:
+    Weights are automatically retrieved from the official implementation hosted in huggingface.
+    Thus, the `--cache-dir` argument is optional, if specified it should point to
+    the huggingface cache directory where the huggingface Falcon weights will be stored.
+    You will need to specify the `--size` argument to determine which version to download
+    (i.e. Falcon 7B or 40B).
+- LLaMa, LLaMa 2 and CodeLlama:
+    Converting llama weights can be done either fetching the weights hosted
+    in huggingface (recommended as it is the easier method) or directly from the
+    weights provided by Meta.
+    - From Meta weights (only available for LLaMa and LLaMa 2):
+        You will need to specify the `--cache-dir` to the directory where the
+        llama weights are stored.
+        This will by default have the form `xB` (e.g. 7B or 70B) for llama v1,
+        or `llama-2-xb` (e.g. llama-2-7b) for llama v2.
+    - From huggingface weights:
+        If `--cache-dir` is not specified or the directory specified does not
+        contain the format expected from Meta weights, the converter will automatically
+        retrieve the weights from huggingface, in which case the `--cache-dir` will
+        have the same semantics as with Falcon.
+
+        Note that to download llama v2 weights from huggingface, you will need to
+        login using `huggingface-cli login` with a huggingface account which has been
+        granted access to the `meta-llama/Llama-2-7b-hf` model.
+        
+
+In all cases, the megatron checkpoint will be stored in the `--out` argument.
+If a huggingface is specified, the intermediate weights (i.e. the huggingface weights)
+stored therein will not be removed when the conversion succeeds.
+"""
+
 import re
 import sys
 import shutil
@@ -9,8 +45,8 @@ import torch
 from tqdm.auto import trange
 from transformers import AutoModelForCausalLM, LlamaTokenizer
 
-from permute_qkv import permute_qkv
-from merge_llama import merge_llama
+from utils.permute_qkv import permute_qkv
+from utils.merge_llama import merge_llama
 
 
 llama_s2layer = {7: 32, 13: 40, 30: 60, 34: 48, 65: 80, 70: 80}
@@ -146,21 +182,24 @@ def llama_to_megatron(weights: dict, size: int, source: str = "meta",
 
 
 def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
-         cache_dir: Optional[Path] = None):
+         cache_dir: Optional[Path] = None, model_path: Optional[str] = None):
     if out is None:
         out = Path(f"falcon{size}b_megatron.pt").absolute()
 
     # get weights from or specified directory
     if model_name == "falcon":
         print("Fetching weights from huggingface")
-        model = AutoModelForCausalLM.from_pretrained(f"tiiuae/falcon-{size}b",
+        if model_path is None:
+            model_path = f"tiiuae/falcon-{size}b",
+        model = AutoModelForCausalLM.from_pretrained(model_path,
                                                      trust_remote_code=True,
                                                      cache_dir=cache_dir)
         hf_weights = model.state_dict()
     else:
         print("Getting llama...")
         version = 2 if "2" in model_name else 1
-        hf_weights, llama_source = merge_llama(size, version, root_dir=cache_dir)
+        hf_weights, llama_source = merge_llama(size, version, root_dir=cache_dir,
+                                               model_path=model_path)
 
     # convert state dict to be megatron-compatible
     if model_name == "falcon":
@@ -189,7 +228,7 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
                 "num_attention_heads": llama_s2heads[size],
                 "ffn_hidden_size": llama_s2dense[size],
                 "parallel_attn": False,
-                "make_vocab_size_divisible_by": 16,
+                "make_vocab_size_divisible_by": 128,
                 "glu_activation": "swiglu",
                 "padded_vocab_size": 32000,
                 "use_rms_norm": True,
@@ -232,10 +271,21 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
     torch.save(final_dict, out/"release"/"mp_rank_00"/"model_optim_rng.pt")
     print("Saved weights in", out)
 
-    if model_name == "llama2" and llama_source == "hf":
-        tokenizer = LlamaTokenizer.from_pretrained(
-            "meta-llama/Llama-2-7b-hf", cache_dir=cache_dir
-        )
+    if model_name in {"llama", "llama2"} and llama_source == "hf":
+        tokenizer = None
+        if model_path is not None:
+            try:
+                tokenizer = LlamaTokenizer.from_pretrained(model_path, cache_dir=cache_dir)
+            except OSError:
+                warnings.warn(f"Model path {model_path} does not have a "
+                              "tokenizer, using default tokenizer instead")
+        if tokenizer is None:
+            if model_name == "llama2":
+                name = "meta-llama/Llama-2-7b-hf"
+            else:
+                name = "decapoda-research/llama-7b-hf"
+            tokenizer = LlamaTokenizer.from_pretrained(name, cache_dir=cache_dir)
+
         token_path = out/"tokenizer.model"
         vocab_file = tokenizer.vocab_file
         shutil.copy(vocab_file, token_path)
@@ -245,17 +295,19 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description="Convert Huggingface falcon weights to "
+    parser = ArgumentParser(description="Convert Huggingface llama or falcon weights to "
                                         "megatron-compatible weights")
     parser.add_argument("model", choices={"falcon", "llama", "llama2", "codellama"})
     parser.add_argument("--size", default=7, choices={7, 13, 30, 34, 40, 65, 70}, type=int,
                         help="The size of the model")
     parser.add_argument("--out", type=Path,
                         help="Directory to store the megatron weights (as checkpoint)")
+    parser.add_argument("--model-path",
+                        help="Sets model_name_or_path when fetching weights from huggingface")
     parser.add_argument("--cache-dir", type=Path,
-                        help=("Directory to store the huggingface weights, or "
-                              "in case of the llama model, where to look for "
-                              "the consolidated.xx.pth"))
+                        help=("Directory to use as cache for the huggingface "
+                              "weights, or in case of the llama model, the path "
+                              "of the weights privided Meta"))
     args = parser.parse_args()
 
     # small arg verification
@@ -268,4 +320,4 @@ if __name__ == "__main__":
     else:
         assert args.size in {7, 13, 70}
 
-    main(args.model, args.size, args.out, args.cache_dir)
+    main(args.model, args.size, args.out, args.cache_dir, args.model_path)

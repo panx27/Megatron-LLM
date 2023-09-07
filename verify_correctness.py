@@ -15,7 +15,7 @@ from megatron.arguments import parse_args
 from megatron.initialize import initialize_megatron, set_jit_fusion_options
 from megatron.training import _setup_model_and_optimizer, build_train_valid_test_data_iterators
 
-from finetune import model_provider, extra_args, get_batch, loss_func, train_valid_test_datasets_provider
+from finetune import model_provider, extra_args, get_batch, loss_func, data_provider
 
 
 class Llama2Wrapper(nn.Module):
@@ -56,7 +56,14 @@ def hf_provider(name: str, cache_dir: Optional[Path], device: str,
             trust_remote_code=True
         )
     elif name == "llama":
-        model = LlamaForCausalLM.from_pretrained(cache_dir)
+        try:
+            model = LlamaForCausalLM.from_pretrained(cache_dir)
+        except OSError:
+            print(f"Cache dir {cache_dir} does not look like a huggingface "
+                  "checkpoint, assuming cache_dir instead")
+            model = LlamaForCausalLM.from_pretrained(
+                f"decapoda-research/llama-{size}b-hf", cache_dir=cache_dir
+            )
     elif name == "llama2" and is_meta_llama2_path(cache_dir):
         print(f"baseline path {cache_dir} does not look like a huggingface, "
               "assuming it's raw llama2 weights instead")
@@ -98,9 +105,8 @@ def mega_forward(model, batch):
     tokens, labels, loss_mask, attention_mask, position_ids = batch
     assert torch.all(loss_mask)
     # we need to do two forward passes to get both the logits and the loss
-    logits = model(tokens, position_ids, attention_mask, labels=None)
-    losses = model(tokens, position_ids, attention_mask, labels=labels)
-    loss, _ = loss_func(loss_mask, losses)
+    _, logits = out = model(tokens, position_ids, attention_mask, labels=labels)
+    loss, _ = loss_func(model.training, batch, out)
     return logits, loss
 
 
@@ -154,7 +160,7 @@ def main():
     # Load dataset iterator
     print("Loading dataset!")
     data_iterator, _, _ = build_train_valid_test_data_iterators(
-        train_valid_test_datasets_provider, args
+        data_provider, args
     )
 
     # Now we can start the verifications
@@ -174,8 +180,8 @@ def extra_extra_args(parser):
         "If falcon, optional: path to huggingface cache. "
         "If llama2, optional: either the huggingface cache path, or "
         "the raw weight directory given by meta. "
-        "If llama, required: either the path to converted huggingface weights "
-        "(us convert_llama_weights_to_hf.py) or the raw weight directory given by meta"
+        "If llama, optional: either the path to converted huggingface weights "
+        "(use convert_llama_weights_to_hf.py) or the huggingface cache dir."
     ))
     group.add_argument("--huggingface_device", default="cuda:1", dest="baseline_device",
                        help="Device to use for the baseline model")
