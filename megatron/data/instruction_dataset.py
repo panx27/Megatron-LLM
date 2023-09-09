@@ -2,7 +2,7 @@
 # source: https://github.com/andreaskoepf/epfl-megatron/tree/local_changes/
 import time
 from enum import IntEnum
-from typing import Optional
+from typing import Optional, List, Dict
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ class Role(IntEnum):
 
 class InstructionDataset(Dataset):
     def __init__(self, name: str, sample_indices: np.ndarray,
-                 indexed_datasets: dict[str, Dataset], seq_length: int):
+                 indexed_datasets: Dict[str, Dataset], seq_length: int):
 
         self.indexed_text = indexed_datasets["text"]
         self.indexed_role = indexed_datasets["role"]
@@ -133,7 +133,7 @@ def _build_dataset(
 
 
 def get_indexed_datasets_(data_prefix: str, data_impl: str,
-                          skip_warmup: bool) -> dict[str, Dataset]:
+                          skip_warmup: bool) -> Dict[str, Dataset]:
     print_rank_0(" > building dataset index ...")
     start_time = time.time()
     indexed_text = make_dataset(f"{data_prefix}-text", data_impl, skip_warmup)
@@ -150,7 +150,7 @@ def get_indexed_datasets_(data_prefix: str, data_impl: str,
 
 
 def _sample_dataset(np_rng: np.random.RandomState, document_indices: np.ndarray,
-                    indexed_datasets: dict[str, Dataset], name: str,
+                    indexed_datasets: Dict[str, Dataset], name: str,
                     num_samples: int, seq_length: int) -> Optional[InstructionDataset]:
     """Compute randomized index of samples for all epochs (num_samples)"""
     assert num_samples > 0
@@ -169,7 +169,7 @@ def _sample_dataset(np_rng: np.random.RandomState, document_indices: np.ndarray,
 
 
 def _build_train_valid_test_datasets(data_prefix, data_impl: str, splits_string: str,
-                                     train_valid_test_num_samples: list[int],
+                                     train_valid_test_num_samples: List[int],
                                      seq_length: int, seed: int, skip_warmup: bool):
     """Build train, valid, and test datasets."""
 
@@ -207,7 +207,7 @@ def _build_train_valid_test_datasets(data_prefix, data_impl: str, splits_string:
 def build_train_valid_test_datasets(data_prefix: Optional[str],
         data_impl: str,
         splits_string: str,
-        train_valid_test_num_samples: list[int],
+        train_valid_test_num_samples: List[int],
         seq_length: int,
         seed: int,
         skip_warmup: bool,

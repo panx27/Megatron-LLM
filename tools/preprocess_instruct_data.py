@@ -18,7 +18,7 @@ import json
 import time
 import itertools
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from multiprocessing import Pool
 from argparse import ArgumentParser, Namespace
 
@@ -40,7 +40,7 @@ class Encoder(object):
     def initializer(self):
         Encoder.tokenizer = build_tokenizer(self.args)
 
-    def encode(self, line: str) -> tuple[int, list[int], list[int]]:
+    def encode(self, line: str):
         # get data
         assert Encoder.tokenizer is not None
         data = json.loads(line)
@@ -67,6 +67,9 @@ class Encoder(object):
         answer = Encoder.tokenizer.tokenize(answer)
         tokens += answer
         roles += [Role.assistant.value]*len(answer)
+
+        # tokens = [Encoder.tokenizer.bos] + tokens + [Encoder.tokenizer.eos]
+        # roles = [roles[0]] + roles + [roles[-1]]
         return len(line), tokens, roles
 
     @property
@@ -83,7 +86,7 @@ class DatasetWriter:
         self.idx_fname = f"{prefix}-{feature}.idx"
         self.builder = None
 
-    def add_item(self, tokens: list[int]):
+    def add_item(self, tokens: List[int]):
         self.builder.add_item(torch.IntTensor(tokens))
 
     def __enter__(self):
@@ -97,7 +100,8 @@ class DatasetWriter:
 
 
 def format_message(message: str, role: str) -> str:
-    return f"<|im_start|>{role}\n{message}<|im_end|>\n"
+    # return f"<|im_start|>{role}\n{message}<|im_end|>\n"
+    return message
 
 
 def get_args():
