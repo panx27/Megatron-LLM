@@ -76,6 +76,8 @@ class Encoder(object):
                     doc_ids.append(sentence_ids)
             if len(doc_ids) > 0 and self.args.append_eod:
                 doc_ids[-1].append(Encoder.tokenizer.eod)
+            if len(doc_ids) > 0 and self.args.prepend_bos:
+                doc_ids[-1] = [Encoder.tokenizer.bos] + doc_ids[-1]
             ids[key] = doc_ids
         return ids, len(json_line)
 
@@ -102,6 +104,8 @@ def get_args():
                        help='Path to the BPE merge file (if necessary).')
     group.add_argument('--append_eod', action='store_true',
                        help='Append an <eod> token to the end of a document.')
+    group.add_argument('--prepend_bos', action='store_true',
+                       help='Prepend a <bos> token to the begining of a document.')
     group.add_argument('--lang', type=str, default='english',
                        help='Language to use for NLTK-powered sentence splitting.')
     group = parser.add_argument_group(title='output data')
