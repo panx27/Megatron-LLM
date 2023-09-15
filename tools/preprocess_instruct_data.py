@@ -97,7 +97,8 @@ class DatasetWriter:
 
 
 def format_message(message: str, role: str) -> str:
-    return f"<|im_start|>{role}\n{message}<|im_end|>\n"
+    # return f"<|im_start|>{role}\n{message}<|im_end|>\n"
+    return message
 
 
 def get_args():
