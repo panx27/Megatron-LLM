@@ -175,7 +175,8 @@ def write_llama_model(model_path,
             num_hidden_layers=n_layers,
             rms_norm_eps=norm_eps,
             num_key_value_heads=n_heads_kv,
-            max_position_embeddings=args.seq_length,
+            max_position_embeddings=args.max_position_embeddings,
+            rope_theta=rope_theta,
         )
         config.save_pretrained(tmp_model_path)
 
@@ -453,7 +454,7 @@ def main():
                         help=("One or more arguments to override special tokens. "
                               "Syntax set as `key=value`, e.g. `eos=<|im_end|>`. "
                               "Overrides available only bos, cls, eos, mask, pad, sep, unk."))
-    
+
     args = parser.parse_args()
     if args.model in {"llama", "llama2", "codellama"}:
         eps = 1e-6 if args.model == "llama" else 1e-5
