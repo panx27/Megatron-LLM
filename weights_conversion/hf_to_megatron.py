@@ -247,7 +247,7 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
                          "layernorm_epsilon": 1e-5, "rope_theta": 1e6})
             if size >= 34:
                 args.update({"num_attention_heads_kv": 8})
-            if size < 34 and not re.match(r"CodeLlama-\d+b-Python", str(cache_dir)):
+            if size < 34 and not re.search(r"CodeLlama-\d+b-Python", str(cache_dir)):
                 args.update({"padded_vocab_size": 32016})
         else:
             sys.exit(f"Model name has to be llama, llama2 or codellama, not {model_name}.")
