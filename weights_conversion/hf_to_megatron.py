@@ -27,7 +27,7 @@ Depending on the model to convert, the inputs might differ.
         Note that to download llama v2 weights from huggingface, you will need to
         login using `huggingface-cli login` with a huggingface account which has been
         granted access to the `meta-llama/Llama-2-7b-hf` model.
-        
+
 
 In all cases, the megatron checkpoint will be stored in the `--out` argument.
 If a huggingface is specified, the intermediate weights (i.e. the huggingface weights)
@@ -247,7 +247,7 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
                          "layernorm_epsilon": 1e-5, "rope_theta": 1e6})
             if size >= 34:
                 args.update({"num_attention_heads_kv": 8})
-            if size < 34 and not re.match(r"CodeLlama-\d+b-Python", cache_dir):
+            if size < 34 and not re.match(r"CodeLlama-\d+b-Python", str(cache_dir)):
                 args.update({"padded_vocab_size": 32016})
         else:
             sys.exit(f"Model name has to be llama, llama2 or codellama, not {model_name}.")
