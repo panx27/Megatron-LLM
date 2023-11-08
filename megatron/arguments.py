@@ -536,10 +536,12 @@ def _add_logging_args(parser):
                        help='Project name for Weights & Biases.')
     group.add_argument('--wandb_entity', type=str, default="meditron",
                        help='Entity/team name for Weights & Biases.')
+    group.add_argument('--wandb_name', type=str, default=None,
+                        help='Name for this run, alternatively can set `WANDB_NAME`.')
     group.add_argument('--wandb_id',type=str,default=None,
                        help="Unique ID to identify this run, alternatively can set `WANDB_RUN_ID`.")
-    group.add_argument('--wandb_resume',action="store_true",
-                       help="If set, we resume logging for the id given instead of launching a new run (errors if id given and resume=False).")
+    group.add_argument('--wandb_resume',type=str,default="allow",
+                       help="If set, we resume logging for the id given instead of launching a new run (errors if id given and resume=None).")
     group.add_argument("--wandb_api_key",type=str,default=None,
                        help="API key for Weights & Biases, needs to be set if not set in environment variable `WANDB_API_KEY`.")
     group.add_argument("--metrics", default=[], nargs="+", choices=list(METRICS) + ["all"],
@@ -770,6 +772,10 @@ def _add_checkpointing_args(parser):
                        help='Do not save current rng state.')
     group.add_argument('--load', type=str, default=None,
                        help='Directory containing a model checkpoint.')
+    group.add_argument('--load_iters', type=int, default=None,
+                       help='Specify which checkpoint to load. If not '
+                          'specified, the latest checkpoint (highest iteration '
+                            'number) located in the load directory will be used.')
     group.add_argument('--no_load_optim', action='store_true', default=None,
                        help='Do not load optimizer when loading checkpoint.')
     group.add_argument('--no_load_rng', action='store_true', default=None,
@@ -878,6 +884,8 @@ def _add_distributed_args(parser):
 
 def _add_validation_args(parser):
     group = parser.add_argument_group(title='validation')
+    group.add_argument('--eval_only', action='store_true',
+                        help='Run evaluation only.')
     group.add_argument('--eval_iters', type=int, default=100,
                        help='Number of iterations to run for evaluation'
                        'validation/test for.')
