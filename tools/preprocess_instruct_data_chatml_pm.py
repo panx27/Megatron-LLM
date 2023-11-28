@@ -56,16 +56,41 @@ class Encoder(object):
             elif i["role"] == "user":
                 roles += [Role.prompter.value]*len(token)
             elif i["role"] == "assistant":
-                if "type" in i:
-                    if i["type"] == "chosen":
-                        special_token = Encoder.tokenizer.tokenize("<|chosen|>")
-                    elif i["type"] == "rejected":
-                        special_token = Encoder.tokenizer.tokenize("<|rejected|>")
-                    assert len(special_token) == 1
-                    tokens += special_token
-                    roles += [Role.assistant.value]*(len(token)+1)
+                if "preference" in i:
+                    preference_token = Encoder.tokenizer.tokenize(f'<|{i["preference"]}|>')
+                    assert len(preference_token) == 1
+                    if i["decision"] == "chosen":
+                        decision_token = Encoder.tokenizer.tokenize("<|chosen|>")
+                        assert len(decision_token) == 1
+
+                        tokens += preference_token
+                        tokens += decision_token
+
+                        roles += [Role.assistant.value]*(len(token))
+                        roles += [Role.prompter.value]
+                        roles += [Role.assistant.value]
+                        # # No loss for the assistant response
+                        # roles += [Role.prompter.value]*(len(token))
+                        # roles += [Role.prompter.value]
+                        # roles += [Role.assistant.value]
+                    elif i["decision"] == "rejected":
+                        decision_token = Encoder.tokenizer.tokenize("<|rejected|>")
+                        assert len(decision_token) == 1
+
+                        tokens += preference_token
+                        tokens += decision_token
+
+                        roles += [Role.assistant.value]*(len(token))
+                        roles += [Role.prompter.value]
+                        roles += [Role.assistant.value]
+                        # # No loss for the assistant response
+                        # roles += [Role.prompter.value]*(len(token))
+                        # roles += [Role.prompter.value]
+                        # roles += [Role.assistant.value]
                 else:
                     roles += [Role.assistant.value]*len(token)
+                    # # No loss for all assistant responses
+                    # roles += [Role.prompter.value]*(len(token))
             else:
                 raise ValueError(f"Unknown role {i['role']}")
 
