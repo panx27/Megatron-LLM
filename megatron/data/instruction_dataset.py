@@ -346,6 +346,8 @@ def instruction_collator(data):
             input[i, :l] = torch.from_numpy(t)
             role[i, :l] = torch.from_numpy(r)
         else:
+            if l > seq_len:
+                print_rank_0(f"Warning: seq_len {l} > max_seq_len {seq_len}, this sample will be truncated.")
             input[i] = torch.from_numpy(t[:seq_len])
             role[i] = torch.from_numpy(r[:seq_len])
 
