@@ -48,7 +48,10 @@ class Encoder(object):
         tokens = []
         roles = []
         for i in data["messages"]:
-            text = format_message(i["content"], i["role"])
+            if "name" in i:
+                text = format_message(i["content"], i["role"], i["name"])
+            else:
+                text = format_message(i["content"], i["role"])
             token = Encoder.tokenizer.tokenize(text)
             tokens += token
             if i["role"] == "system":
@@ -89,9 +92,11 @@ class DatasetWriter:
         self.builder = None
 
 
-def format_message(message: str, role: str) -> str:
-    # return f"<|im_start|>{role}\n{message}<|im_end|>\n"
-    return f"<|im_start|>{role}\n{message}<|im_end|>"
+def format_message(message: str, role: str, name: str = None) -> str:
+    if role == "system" and name:
+        return f"<|im_start|>{role} name={name}\n{message}<|im_end|>"
+    else:
+        return f"<|im_start|>{role}\n{message}<|im_end|>"
 
 
 def get_args():
