@@ -136,6 +136,9 @@ def get_args():
     group.add_argument("--no_new_tokens", action="store_false", dest="new_tokens",
                        help=("Whether to add special tokens (e.g. CLS, MASK, etc) "
                              "in the sentencepiece tokenizer or not"))
+    group.add_argument("--do_packing", action="store_true", help="")
+    group.add_argument("--max_packing_size", type=int, default=0, help="")
+
     args = parser.parse_args()
     args.keep_empty = False
 
@@ -150,13 +153,51 @@ def get_args():
     return args
 
 
+def ffd_packing(data, max_bin_size, eos_token=[]):
+    bins = []
+    bins_results = []
+    sorted_data = sorted(data, key=lambda x: x["size"], reverse=True)
+    for i in range(len(sorted_data)):
+        add_new = True
+        for j in range(len(bins)):
+            if bins[j] + (sorted_data[i]["size"] + len(eos_token)) <= max_bin_size:
+                bins[j] += (sorted_data[i]["size"] + len(eos_token))
+                bins_results[j].append(sorted_data[i])
+                add_new = False
+                break
+        if add_new:
+            if sorted_data[i]["size"] > max_bin_size:
+                print(f"Warning: seq_len {sorted_data[i]['size']} > max_packing_seq_len {max_bin_size}")
+            bins.append(sorted_data[i]["size"])
+            bins_results.append([sorted_data[i]])
+
+    tokens_list = []
+    roles_list = []
+    for bin_res in bins_results:
+        tokens = []
+        roles = []
+        for x in bin_res:
+            if tokens:
+                tokens.extend(eos_token)
+                roles.extend([Role.system.value]*len(eos_token)) # No loss for eos
+            tokens.extend(x["tokens"])
+            roles.extend(x["roles"])
+        assert len(tokens) == len(roles)
+        tokens_list.append(tokens)
+        roles_list.append(roles)
+    print(f"Packing done!\noriginal size: {len(data)}\nnew size: {len(tokens_list)}")
+    return tokens_list, roles_list
+
+
 def main():
     args = get_args()
     startup_start = time.time()
 
     encoder = Encoder(args)
     vocab_size = build_tokenizer(args).vocab_size
+    special_tokens = build_tokenizer(args)._special_tokens
     fs = map(open, args.input)
+    processed_data = []
     with Pool(args.workers, initializer=encoder.initializer) as pool, \
             DatasetWriter(args.output_prefix, vocab_size, args.dataset_impl,
                           "text") as token_writer, \
@@ -174,7 +215,8 @@ def main():
             total_bytes_processed += size
             token_writer.add_item(tokens)
             role_writer.add_item(roles)
-
+            assert len(tokens) == len(roles)
+            processed_data.append({"tokens": tokens, "roles": roles, "size": len(tokens)})
             if i % args.log_interval == 0:
                 elapsed = time.time() - proc_start
                 mbs = total_bytes_processed/1024/1024/elapsed
@@ -183,6 +225,24 @@ def main():
 
     for f in fs:
         f.close()
+
+    if args.do_packing:
+        assert args.max_packing_size > 0
+        packed_tokens, packed_roles = ffd_packing(
+            processed_data, args.max_packing_size, eos_token=[special_tokens["</s>"]]
+        )
+        with DatasetWriter(
+            f"{args.output_prefix}_packed_{args.max_packing_size}",
+            vocab_size, args.dataset_impl, "text"
+        ) as packed_token_writer:
+            for i in packed_tokens:
+                packed_token_writer.add_item(i)
+        with DatasetWriter(
+            f"{args.output_prefix}_packed_{args.max_packing_size}",
+            16, args.dataset_impl, "role"
+        ) as packed_role_writer:
+            for i in packed_roles:
+                packed_role_writer.add_item(i)
 
 
 if __name__ == '__main__':
