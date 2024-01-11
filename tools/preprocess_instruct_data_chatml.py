@@ -171,6 +171,7 @@ def ffd_packing(data, max_bin_size, eos_token=[]):
             bins.append(sorted_data[i]["size"])
             bins_results.append([sorted_data[i]])
 
+    print("Packing...")
     tokens_list = []
     roles_list = []
     for bin_res in bins_results:
