@@ -47,35 +47,36 @@ class Encoder(object):
         # question = data[self.args.question_key]
         # answer = data[self.args.answer_key]
         conversations = data[self.args.conv_key]
-        system = None if self.args.system_key is None else data[self.args.system_key]
+        #system = None if self.args.system_key is None else data[self.args.system_key]
 
         # now format messages
-        if system is not None:
-            system = format_message(system, "system")
+        # if system is not None:
+        #     system = format_message(system, "system")
         # question = format_message(question, "question")
         # answer = format_message(answer, "answer")
 
         # tokenize and get roles
         tokens = []
         roles = []
-        if system is not None:
-            system = Encoder.tokenizer.tokenize(system)
-            tokens += system
-            roles += [Role.system.value]*len(system)
+        # if system is not None:
+        #     system = Encoder.tokenizer.tokenize(system)
+        #     tokens += system
+        #     roles += [Role.system.value]*len(system)
         for turn in conversations:
-            if self.args.question_key in turn:
-                question = format_message(turn[self.args.question_key], "question")
-                question = Encoder.tokenizer.tokenize(question)
-                tokens += question
-                roles += [Role.prompter.value]*len(question)
-            else:
-                answer = format_message(turn[self.args.answer_key], "answer")
-                answer = Encoder.tokenizer.tokenize(answer)
-                tokens += answer
-                if not turn['loss']:
-                    roles += [Role.prompter.value]*len(answer)
+            text = format_message(turn['content'], turn['role'])
+            token = Encoder.tokenizer.tokenize(text)
+            tokens += token
+            if turn["role"] == "system":
+                roles += [Role.system.value]*len(token)
+            elif turn["role"] == "user":
+                roles += [Role.prompter.value]*len(token)
+            elif turn["role"] == "assistant":
+                if 'loss' in turn and turn['loss'] == 0:
+                    roles += [Role.prompter.value]*len(token)
                 else:
-                    roles += [Role.assistant.value]*len(answer)
+                    roles += [Role.assistant.value]*len(token)
+            else:
+                raise ValueError(f"Unknown role {i['role']}")
         return len(line), tokens, roles
 
     @property
@@ -106,7 +107,7 @@ class DatasetWriter:
 
 
 def format_message(message: str, role: str) -> str:
-    # return f"<|im_start|>{role}\n{message}<|im_end|>\n"
+    return f"<|im_start|>{role}\n{message}<|im_end|>\n"
     return message
 
 
@@ -121,7 +122,7 @@ def get_args():
                        help='key to extract questions from json')
     group.add_argument('--answer_key', default='output',
                        help='key to extract answers from json')
-    group.add_argument('--conv_key', default='conversations',
+    group.add_argument('--conv_key', default='messages',
                        help='key to extract the multi-turn from json')
 
     group = parser.add_argument_group(title='tokenizer')
