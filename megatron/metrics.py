@@ -18,6 +18,7 @@ class MetricInput:
         # lazy parameters
         self._max_indices = None
         self._instruct_mask = None
+        self._preference_mask = None
 
     @property
     def max_indices(self) -> torch.Tensor:
@@ -58,6 +59,23 @@ class MetricInput:
             self._instruct_mask = self.loss_mask*should_keep
         return self._instruct_mask
 
+    @property
+    def preference_mask(self) -> torch.Tensor:
+        if self._preference_mask is None:
+            # like loss_mask but only consider <|chosen|> or <|rejected|>
+            tokenizer = get_tokenizer()
+            chosen_id, = tokenizer.tokenize("<|chosen|>")
+            rejected_id, = tokenizer.tokenize("<|rejected|>")
+            should_keep = torch.zeros_like(self.loss_mask)
+            # mask all indices that are not <|chosen|> or <|rejected|>
+            i, j = torch.nonzero(self.labels == chosen_id, as_tuple=True)
+            should_keep[i, j] = 1.0
+            i, j = torch.nonzero(self.labels == rejected_id, as_tuple=True)
+            should_keep[i, j] = 1.0
+            # update mask
+            self._preference_mask = self.loss_mask*should_keep
+        return self._preference_mask
+
 
 def perplexity(inputs: MetricInput) -> dict[str, int | float]:
     ppl = math.exp(min(20, inputs.loss.item()))
@@ -85,6 +103,17 @@ def instruct_accuracy(inputs: MetricInput) -> dict[str, int | float]:
     return {"instruct accuracy": averaged_accuracy[0]}
 
 
+def preference_accuracy(inputs: MetricInput) -> dict[str, int | float]:
+    if inputs.preference_mask is None:
+        accuracy = torch.tensor(torch.nan, device=inputs.labels.device)
+    else:
+        matching = torch.masked_fill(inputs.labels == inputs.max_indices,
+                                     inputs.preference_mask == 0, False)
+        accuracy = torch.count_nonzero(matching)/torch.count_nonzero(inputs.preference_mask)
+    averaged_accuracy = average_losses_across_data_parallel_group([accuracy])
+    return {"preference accuracy": averaged_accuracy[0]}
+
+
 def count_loss_mask(inputs: MetricInput) -> dict[str, int | float]:
     count = torch.count_nonzero(inputs.loss_mask)/inputs.loss_mask.size(0)
     return {"count loss mask": count}
@@ -101,6 +130,7 @@ METRICS = {
     "perplexity": perplexity,
     "accuracy": accuracy,
     "instruct_accuracy": instruct_accuracy,
+    "preference_accuracy": preference_accuracy,
     "count_loss_mask": count_loss_mask,
     "count_instruct_mask": count_instruct_mask,
 }

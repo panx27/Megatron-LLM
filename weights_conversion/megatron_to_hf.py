@@ -473,7 +473,7 @@ def main():
             num_output_shards=args.num_output_shards,
             safe_serialization=True,
         )
-    write_tokenizer(args)
+    # write_tokenizer(args)
 
 if __name__ == "__main__":
     main()
