@@ -47,6 +47,7 @@ class Encoder(object):
         question = data[self.args.question_key]
         answer = data[self.args.answer_key]
         system = None if self.args.system_key is None else data[self.args.system_key]
+        weight = None if self.args.loss_weight_key is None else data[self.args.loss_weight_key]
 
         # now format messages
         if system is not None:
@@ -57,17 +58,24 @@ class Encoder(object):
         # tokenize and get roles
         tokens = []
         roles = []
+        weights = []
         if system is not None:
             system = Encoder.tokenizer.tokenize(system)
             tokens += system
             roles += [Role.system.value]*len(system)
+            weights += [0.0]*len(system)
         question = Encoder.tokenizer.tokenize(question)
         tokens += question
         roles += [Role.prompter.value]*len(question)
+        weights += [0.0]*len(question)
         answer = Encoder.tokenizer.tokenize(answer)
         tokens += answer
         roles += [Role.assistant.value]*len(answer)
-        return len(line), tokens, roles
+        if weight is not None:
+            weights += [weight]*len(answer)
+        else:
+            weights += [1.0]*len(answer)
+        return len(line), tokens, roles, weights
 
     @property
     def special_tokens(self) -> dict:
@@ -108,6 +116,8 @@ def get_args():
                        help='Path(s) to input JSON file(s)')
     group.add_argument('--system_key',
                        help='key to extract system info from json (optional)')
+    group.add_argument('--loss_weight_key',
+                       help='key to extract loss weight (optional)')
     group.add_argument('--question_key', default='input',
                        help='key to extract questions from json')
     group.add_argument('--answer_key', default='output',
@@ -169,7 +179,9 @@ def main():
             DatasetWriter(args.output_prefix, vocab_size, args.dataset_impl,
                           "text") as token_writer, \
             DatasetWriter(args.output_prefix, 16, args.dataset_impl,
-                          "role") as role_writer:
+                          "role") as role_writer, \
+            DatasetWriter(args.output_prefix, None, args.dataset_impl,
+                          "weight") as weigth_writer:
 
         f = itertools.chain(*fs)
         docs = pool.imap(encoder.encode, f, args.chunk_size)
@@ -178,10 +190,11 @@ def main():
         total_bytes_processed = 0
         print("Time to startup:", startup_end - startup_start)
 
-        for i, (size, tokens, roles) in enumerate(docs, start=1):
+        for i, (size, tokens, roles, weights) in enumerate(docs, start=1):
             total_bytes_processed += size
             token_writer.add_item(tokens)
             role_writer.add_item(roles)
+            weigth_writer.add_item(weights)
 
             if i % args.log_interval == 0:
                 elapsed = time.time() - proc_start
