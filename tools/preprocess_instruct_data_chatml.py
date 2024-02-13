@@ -58,19 +58,19 @@ class Encoder(object):
 
             if i["role"] == "system":
                 roles += [Role.system.value]*len(token)
-                if self.args.weight_key:
+                if self.args.weight_key and self.args.weight_key in i:
                     weights += [float(i[self.args.weight_key])]*len(token)
                 else:
                     weights += [self.args.system_weight]*len(token)
             elif i["role"] == "user":
                 roles += [Role.prompter.value]*len(token)
-                if self.args.weight_key:
+                if self.args.weight_key and self.args.weight_key in i:
                     weights += [float(i[self.args.weight_key])]*len(token)
                 else:
                     weights += [self.args.prompter_weight]*len(token)
             elif i["role"] == "assistant":
                 roles += [Role.assistant.value]*len(token)
-                if self.args.weight_key:
+                if self.args.weight_key and self.args.weight_key in i:
                     weights += [float(i[self.args.weight_key])]*len(token)
                 else:
                     weights += [self.args.assistant_weight]*len(token)
