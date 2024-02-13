@@ -29,7 +29,7 @@ def model_provider(pre_process: bool = True, post_process: bool = True):
     print_rank_0("Building model ...")
 
     args = get_args()
-    if args.model_name == "gpt": 
+    if args.model_name == "gpt":
         cls = GPTModel
     elif args.model_name == "falcon":
         cls = FalconModel
@@ -105,7 +105,7 @@ def get_batch(data_iterator):
     if args.data_type == "gpt":
         keys = ["text"]
     elif args.data_type == "instruction":
-        keys = ["text", "attention_mask", "assistant_mask", "pad_mask"]
+        keys = ["text", "attention_mask", "assistant_mask", "loss_weight", "pad_mask"]
     else:
         raise KeyError(f"Unknown dataset type {args.data_type}")
 
@@ -150,9 +150,14 @@ def get_batch(data_iterator):
     attention_mask = data_b["attention_mask"][:, :-1]
     assistant_mask = data_b["assistant_mask"][:, 1:].to(tokens.device)
     pad_mask = data_b["pad_mask"][:, 1:].to(tokens.device)
-    loss_mask = torch.full(labels.size(), args.scalar_loss_mask, dtype=torch.float,
-                           device=tokens.device)
-    loss_mask[assistant_mask == 1] = 1.0
+    # loss_mask = torch.full(labels.size(), args.scalar_loss_mask, dtype=torch.float,
+    #                        device=tokens.device)
+    # loss_mask[assistant_mask == 1] = 1.0
+    loss_weight = data_b["loss_weight"][:, 1:].to(tokens.device)
+    loss_mask = torch.full(labels.size(), args.scalar_loss_mask, dtype=torch.int64, device=tokens.device)
+    _mask = loss_weight != args.scalar_loss_mask
+    loss_mask[_mask] = loss_weight[_mask]
+
     loss_mask[pad_mask == 1] = 0.0
     attention_mask, position_ids = get_attention_mask_and_position_ids(
         tokens, attention_mask

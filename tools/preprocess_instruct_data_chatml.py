@@ -47,6 +47,7 @@ class Encoder(object):
         # tokenize and get roles
         tokens = []
         roles = []
+        weights = []
         for i in data["messages"]:
             if "name" in i:
                 text = format_message(i["content"], i["role"], i["name"])
@@ -54,16 +55,29 @@ class Encoder(object):
                 text = format_message(i["content"], i["role"])
             token = Encoder.tokenizer.tokenize(text)
             tokens += token
+
             if i["role"] == "system":
                 roles += [Role.system.value]*len(token)
+                if self.args.weight_key:
+                    weights += [float(i[self.args.weight_key])]*len(token)
+                else:
+                    weights += [self.args.system_weight]*len(token)
             elif i["role"] == "user":
                 roles += [Role.prompter.value]*len(token)
+                if self.args.weight_key:
+                    weights += [float(i[self.args.weight_key])]*len(token)
+                else:
+                    weights += [self.args.prompter_weight]*len(token)
             elif i["role"] == "assistant":
                 roles += [Role.assistant.value]*len(token)
+                if self.args.weight_key:
+                    weights += [float(i[self.args.weight_key])]*len(token)
+                else:
+                    weights += [self.args.assistant_weight]*len(token)
             else:
                 raise ValueError(f"Unknown role {i['role']}")
 
-        return len(line), tokens, roles
+        return len(line), tokens, roles, weights
 
     @property
     def special_tokens(self) -> dict:
@@ -136,6 +150,12 @@ def get_args():
     group.add_argument("--no_new_tokens", action="store_false", dest="new_tokens",
                        help=("Whether to add special tokens (e.g. CLS, MASK, etc) "
                              "in the sentencepiece tokenizer or not"))
+
+    group.add_argument('--weight_key', help='key to extract loss weight (optional)')
+    group.add_argument("--system_weight", type=float, default=0.0, help="")
+    group.add_argument("--prompter_weight", type=float, default=0.0, help="")
+    group.add_argument("--assistant_weight", type=float, default=1.0, help="")
+
     group.add_argument("--do_packing", action="store_true", help="")
     group.add_argument("--max_packing_size", type=int, default=0, help="")
 
@@ -174,20 +194,26 @@ def ffd_packing(data, max_bin_size, eos_token=[]):
     print("Packing...")
     tokens_list = []
     roles_list = []
+    weights_list = []
     for bin_res in bins_results:
         tokens = []
         roles = []
+        weights = []
         for x in bin_res:
             if tokens:
                 tokens.extend(eos_token)
-                roles.extend([Role.system.value]*len(eos_token)) # No loss for eos
+                # No loss for eos token
+                roles.extend([Role.system.value]*len(eos_token))
+                weights.extend([0.0]*len(eos_token))
             tokens.extend(x["tokens"])
             roles.extend(x["roles"])
-        assert len(tokens) == len(roles)
+            weights.extend(x["weights"])
+        assert len(tokens) == len(roles) == len(weights)
         tokens_list.append(tokens)
         roles_list.append(roles)
+        weights_list.append(weights)
     print(f"Packing done!\noriginal size: {len(data)}\nnew size: {len(tokens_list)}")
-    return tokens_list, roles_list
+    return tokens_list, roles_list, weights_list
 
 
 def main():
@@ -203,7 +229,9 @@ def main():
             DatasetWriter(args.output_prefix, vocab_size, args.dataset_impl,
                           "text") as token_writer, \
             DatasetWriter(args.output_prefix, 16, args.dataset_impl,
-                          "role") as role_writer:
+                          "role") as role_writer, \
+            DatasetWriter(args.output_prefix, None, args.dataset_impl,
+                          "weight") as weigth_writer:
 
         f = itertools.chain(*fs)
         docs = pool.imap(encoder.encode, f, args.chunk_size)
@@ -212,12 +240,15 @@ def main():
         total_bytes_processed = 0
         print("Time to startup:", startup_end - startup_start)
 
-        for i, (size, tokens, roles) in enumerate(docs, start=1):
+        for i, (size, tokens, roles, weights) in enumerate(docs, start=1):
             total_bytes_processed += size
             token_writer.add_item(tokens)
             role_writer.add_item(roles)
-            assert len(tokens) == len(roles)
-            processed_data.append({"tokens": tokens, "roles": roles, "size": len(tokens)})
+            weigth_writer.add_item(weights)
+            assert len(tokens) == len(roles) == len(weights)
+            processed_data.append(
+                {"tokens": tokens, "roles": roles, "weights": weights, "size": len(tokens)}
+            )
             if i % args.log_interval == 0:
                 elapsed = time.time() - proc_start
                 mbs = total_bytes_processed/1024/1024/elapsed
@@ -229,21 +260,30 @@ def main():
 
     if args.do_packing:
         assert args.max_packing_size > 0
-        packed_tokens, packed_roles = ffd_packing(
+        packed_tokens, packed_roles, packed_weights = ffd_packing(
             processed_data, args.max_packing_size, eos_token=[special_tokens["</s>"]]
         )
+
         with DatasetWriter(
             f"{args.output_prefix}_packed_{args.max_packing_size}",
             vocab_size, args.dataset_impl, "text"
         ) as packed_token_writer:
             for i in packed_tokens:
                 packed_token_writer.add_item(i)
+
         with DatasetWriter(
             f"{args.output_prefix}_packed_{args.max_packing_size}",
             16, args.dataset_impl, "role"
         ) as packed_role_writer:
             for i in packed_roles:
                 packed_role_writer.add_item(i)
+
+        with DatasetWriter(
+            f"{args.output_prefix}_packed_{args.max_packing_size}",
+            None, args.dataset_impl, "weight"
+        ) as packed_weight_writer:
+            for i in packed_weights:
+                packed_weight_writer.add_item(i)
 
 
 if __name__ == '__main__':

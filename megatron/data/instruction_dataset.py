@@ -29,11 +29,13 @@ class InstructionDataset(Dataset):
 
         self.indexed_text = indexed_datasets["text"]
         self.indexed_role = indexed_datasets["role"]
+        self.indexed_weight = indexed_datasets["weight"]
 
         # validate indices
         assert np.min(sample_indices) >= 0
         assert np.max(sample_indices) < len(self.indexed_text)
         assert len(self.indexed_text) == len(self.indexed_role)
+        assert len(self.indexed_text) == len(self.indexed_weight)
 
         self.name = name
         self.sample_indices = sample_indices
@@ -47,8 +49,10 @@ class InstructionDataset(Dataset):
         idx = self.sample_indices[idx]
         text = self.indexed_text.get(idx)
         role = self.indexed_role.get(idx)
+        weight = self.indexed_weight.get(idx)
         assert text is not None and role is not None and text.shape == role.shape
-        return {"text": text.astype(np.int64), "role": role.astype(np.int64)}
+        assert text is not None and weight is not None and text.shape == weight.shape
+        return {"text": text.astype(np.int64), "role": role.astype(np.int64), "weight": weight.astype(np.int64)}
 
 
 def _build_dataset_kernel(
@@ -138,6 +142,7 @@ def get_indexed_datasets_(data_prefix: str, data_impl: str,
     start_time = time.time()
     indexed_text = make_dataset(f"{data_prefix}-text", data_impl, skip_warmup)
     indexed_role = make_dataset(f"{data_prefix}-role", data_impl, skip_warmup)
+    indexed_weight = make_dataset(f"{data_prefix}-weight", data_impl, skip_warmup)
     assert indexed_text is not None
     print_rank_0(" > finished creating indexed dataset in "
                  f"{time.time() - start_time:4f} seconds")
@@ -146,7 +151,7 @@ def get_indexed_datasets_(data_prefix: str, data_impl: str,
     indices = np.arange(start=0, stop=num_docs, step=1, dtype=np.int32)
     n_tokens = np.sum(indexed_text.sizes[indices])
     print_rank_0("    number of tokens: {}".format(n_tokens))
-    return {"text": indexed_text, "role": indexed_role}
+    return {"text": indexed_text, "role": indexed_role, "weight": indexed_weight}
 
 
 def _sample_dataset(np_rng: np.random.RandomState, document_indices: np.ndarray,
@@ -333,25 +338,30 @@ def instruction_collator(data):
     batch_size = len(data)
     attention_mask = torch.ones((batch_size, seq_len), dtype=torch.long)
     role = torch.full_like(attention_mask, -1)
+    weight = torch.full_like(attention_mask, 0)
     input = torch.full_like(attention_mask, pad_id)
 
 
     for i, x in enumerate(data):
         t = x["text"]
         r = x["role"]
+        w = x["weight"]
         l = len(t)
 
         if l < seq_len:
             attention_mask[i, l:] = 0
             input[i, :l] = torch.from_numpy(t)
             role[i, :l] = torch.from_numpy(r)
+            weight[i, :l] = torch.from_numpy(w)
         else:
             if l > seq_len:
                 print_rank_0(f"Warning: seq_len {l} > max_seq_len {seq_len}, this sample will be truncated.")
             input[i] = torch.from_numpy(t[:seq_len])
             role[i] = torch.from_numpy(r[:seq_len])
+            weight[i] = torch.from_numpy(w[:seq_len])
 
     assistant_mask = (role == Role.assistant.value).long()
+    weight = weight.long()
     pad_mask = (input == pad_id).long()
     return {"text": input, "attention_mask": attention_mask,
-            "assistant_mask": assistant_mask, "pad_mask": pad_mask}
+            "assistant_mask": assistant_mask, "pad_mask": pad_mask, "loss_weight": weight}
