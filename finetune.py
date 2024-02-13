@@ -154,8 +154,7 @@ def get_batch(data_iterator):
     #                        device=tokens.device)
     # loss_mask[assistant_mask == 1] = 1.0
     loss_weight = data_b["loss_weight"][:, 1:].to(tokens.device)
-    loss_mask = torch.full(labels.size(), args.scalar_loss_mask, dtype=torch.int64,
-                                device=tokens.device)
+    loss_mask = torch.full(labels.size(), args.scalar_loss_mask, dtype=torch.int64, device=tokens.device)
     _mask = loss_weight != args.scalar_loss_mask
     loss_mask[_mask] = loss_weight[_mask]
 

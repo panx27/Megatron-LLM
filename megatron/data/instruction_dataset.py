@@ -338,7 +338,7 @@ def instruction_collator(data):
     batch_size = len(data)
     attention_mask = torch.ones((batch_size, seq_len), dtype=torch.long)
     role = torch.full_like(attention_mask, -1)
-    weight = torch.full_like(attention_mask, -1)
+    weight = torch.full_like(attention_mask, 0)
     input = torch.full_like(attention_mask, pad_id)
 
 
