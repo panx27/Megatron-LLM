@@ -119,17 +119,17 @@ def write_llama_model(model_path,
     print('Llama-Megatron Loaded!')
     param_count = 0
     index_dict = {"weight_map": {}}
-        
+
     # Start conversion
     with TemporaryDirectory() as tmp_model_path:
         print(f'Weighted Converting for {n_layers} layers...')
         for layer_i in range(n_layers):
             filename = f"pytorch_model-{layer_i + 1}-of-{n_layers + 1}.bin"
-            wq_proj, wk_proj, wv_proj = convert_wqkv(llama_mega=loaded, 
+            wq_proj, wk_proj, wv_proj = convert_wqkv(llama_mega=loaded,
                                           layer_idx=layer_i, n_heads=n_heads,
                                           n_heads_kv=n_heads_kv)
-            ffn_w1, ffn_w3 = convert_ffn(llama_mega=loaded, 
-                                        layer_idx=layer_i, 
+            ffn_w1, ffn_w3 = convert_ffn(llama_mega=loaded,
+                                        layer_idx=layer_i,
                                         n_dense=n_dense)
             state_dict = {
                 f"model.layers.{layer_i}.self_attn.q_proj.weight": wq_proj,
@@ -239,17 +239,17 @@ def write_mistral_model(
     print('Mistral-Megatron Loaded!')
     param_count = 0
     index_dict = {"weight_map": {}}
-        
+
     # Start conversion
     with TemporaryDirectory() as tmp_model_path:
         print(f'Weighted Converting for {n_layers} layers...')
         for layer_i in range(n_layers):
             filename = f"pytorch_model-{layer_i + 1}-of-{n_layers + 1}.bin"
-            wq_proj, wk_proj, wv_proj = convert_wqkv(llama_mega=loaded, 
+            wq_proj, wk_proj, wv_proj = convert_wqkv(llama_mega=loaded,
                                           layer_idx=layer_i, n_heads=n_heads,
                                           n_heads_kv=n_heads_kv)
-            ffn_w1, ffn_w3 = convert_ffn(llama_mega=loaded, 
-                                        layer_idx=layer_i, 
+            ffn_w1, ffn_w3 = convert_ffn(llama_mega=loaded,
+                                        layer_idx=layer_i,
                                         n_dense=n_dense)
             state_dict = {
                 f"model.layers.{layer_i}.self_attn.q_proj.weight": wq_proj,
