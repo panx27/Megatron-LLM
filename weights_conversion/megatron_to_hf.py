@@ -32,7 +32,8 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))  # megatron is imp
 
 import torch
 from tqdm.auto import trange
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizerFast, FalconConfig, FalconForCausalLM, AutoTokenizer, MistralConfig, MistralForCausalLM
+# from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizerFast, FalconConfig, FalconForCausalLM, AutoTokenizer, MistralConfig, MistralForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizerFast, FalconConfig, FalconForCausalLM, AutoTokenizer
 
 from utils.permute_qkv import permute_qkv
 
@@ -536,8 +537,10 @@ def write_tokenizer(args: Namespace):
         if args.vocab_extra_ids_list:
             additional_special_tokens.extend(args.vocab_extra_ids_list.split(","))
 
-        for special_token in additional_special_tokens:
-            hf_tokenizer.add_special_tokens({"additional_special_tokens": [special_token]})
+        # for special_token in additional_special_tokens:
+        #     hf_tokenizer.add_special_tokens({"additional_special_tokens": [special_token]})
+        special_tokens = {"additional_special_tokens": additional_special_tokens}
+        hf_tokenizer.add_special_tokens(special_tokens_dict=special_tokens, replace_additional_special_tokens=True)
 
         hf_vocab = hf_tokenizer.get_vocab()
         tokens_to_check = [
@@ -565,6 +568,9 @@ def write_tokenizer(args: Namespace):
             warnings.warn(f"Cannot override key {key}")
         except KeyError:
             warnings.warn(f"Token {value} not found in megatron tokenizer")
+
+    hf_tokenizer.add_bos_token = False
+    hf_tokenizer.add_eos_token = False
 
     print("Final HF Tokenizer configuration:")
     print(hf_tokenizer)
@@ -603,6 +609,7 @@ def main():
             rope_theta=rope_theta,
         )
     elif args.model == "mistral":
+        vocab_size = write_tokenizer(args)
         write_mistral_model(
             model_path=args.output_dir,
             input_base_path=args.input_dir,

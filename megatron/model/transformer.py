@@ -23,7 +23,7 @@ from megatron.model.utils import attention_mask_func, erf_gelu
 # Extracted from: https://github.com/bigscience-workshop/Megatron-DeepSpeed
 from .glu_activations import GLU_ACTIVATIONS
 from megatron.model.positional_embeddings import precompute_freqs_cis, apply_rotary_emb
-from flash_attn.bert_padding import pad_input, unpad_input_for_concatenated_sequences
+# from flash_attn.bert_padding import pad_input, unpad_input_for_concatenated_sequences
 
 """ We use the following notation throughout this file:
      h: hidden size
