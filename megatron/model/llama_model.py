@@ -19,7 +19,7 @@ class LlamaModel(GPTModel):
         args = get_args()
 
         # mandatory arguments
-        assert version in {1, 2}, f"Unknown llama version {version}"
+        assert version in {1, 2, 3}, f"Unknown llama version {version}"
         assert args.position_embedding_type == PositionEmbeddingType.rotary, \
             f"Llama uses rotary embedding, not {args.position_embedding_type}"
         assert not args.use_post_ln, "Llama does not use post_ln"

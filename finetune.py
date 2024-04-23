@@ -33,8 +33,14 @@ def model_provider(pre_process: bool = True, post_process: bool = True):
         cls = GPTModel
     elif args.model_name == "falcon":
         cls = FalconModel
-    elif args.model_name in {"llama", "llama2", "codellama"}:
-        cls = partial(LlamaModel, version=1 if args.model_name == "llama" else 2)
+    elif args.model_name in {"llama", "llama2", "codellama", "llama3"}:
+        if "3" in args.model_name:
+            version = 3
+        elif "2" in args.model_name:
+            version = 2
+        else:
+            version = 1
+        cls = partial(LlamaModel, version=version)
     elif args.model_name == "mistral":
         cls = MistralModel
         if args.sliding_window_size != 4096:
@@ -248,7 +254,7 @@ def extra_args(parser):
     """Text generation arguments."""
     group = parser.add_argument_group(title='validation set')
     group.add_argument("--model_name",
-                       choices={"gpt", "llama", "falcon", "llama2", "codellama", "mistral"},
+                       choices={"gpt", "llama", "falcon", "llama2", "codellama", "mistral", "llama3"},
                        default="gpt")
     group.add_argument("--model_type", choices={"encoder_or_decoder", "encoder_and_decoder"},
                        default="encoder_or_decoder")

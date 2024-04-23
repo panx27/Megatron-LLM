@@ -28,7 +28,7 @@ Depending on the model to convert, the inputs might differ.
         Note that to download llama v2 weights from huggingface, you will need to
         login using `huggingface-cli login` with a huggingface account which has been
         granted access to the `meta-llama/Llama-2-7b-hf` model.
-        
+
 
 In all cases, the megatron checkpoint will be stored in the `--out` argument.
 If a huggingface is specified, the intermediate weights (i.e. the huggingface weights)
@@ -50,11 +50,11 @@ from utils.permute_qkv import permute_qkv
 from utils.merge_llama import merge_llama
 
 
-llama_s2layer = {7: 32, 13: 40, 30: 60, 34: 48, 65: 80, 70: 80}
-llama_s2heads = {7: 32, 13: 40, 30: 52, 34: 64, 65: 64, 70: 64}
-llama_s2dense = {7: 11008, 13: 13824, 30: 17920, 34: 22016, 65: 22016,
+llama_s2layer = {7: 32, 8: 32, 13: 40, 30: 60, 34: 48, 65: 80, 70: 80}
+llama_s2heads = {7: 32, 8: 32, 13: 40, 30: 52, 34: 64, 65: 64, 70: 64}
+llama_s2dense = {7: 11008, 8: 14336, 13: 13824, 30: 17920, 34: 22016, 65: 22016,
                  70: 28672}  # should be (2/3)*4*d, but it isn't exaclty that
-llama_s2hidden = {7: 4096, 13: 5120, 30: 6656, 34: 8192, 65: 8192, 70: 8192}
+llama_s2hidden = {7: 4096, 8: 4096, 13: 5120, 30: 6656, 34: 8192, 65: 8192, 70: 8192}
 
 
 def falcon_to_megatron(weights: dict, size: int) -> dict:
@@ -140,7 +140,10 @@ def llama_to_megatron(weights: dict, size: int, source: str = "meta",
     hidden = llama_s2hidden[size]
     n_heads = llama_s2heads[size]
     n_hidden_per_head = hidden//n_heads
-    n_kv_heads = n_heads if version == 1 or size <= 13 else 8
+    if version == 3:
+        n_kv_heads = 8
+    else:
+        n_kv_heads = n_heads if version == 1 or size <= 13 else 8
 
     # weights independent of layers
     embedding = {"word_embeddings.weight": weights["tok_embeddings.weight"]}
@@ -280,7 +283,12 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
         hf_weights = model.state_dict()
     else:
         print("Getting llama...")
-        version = 2 if "2" in model_name else 1
+        if "3" in model_name:
+            version = 3
+        elif "2" in model_name:
+            version = 2
+        else:
+            version = 1
         hf_weights, llama_source = merge_llama(size, version, root_dir=cache_dir,
                                                model_path=model_path)
 
@@ -290,8 +298,14 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
     elif model_name == "mistral":
         megatron_weights = mistral_to_megatron(hf_weights, size)
     else:
+        if "3" in model_name:
+            version = 3
+        elif "2" in model_name:
+            version = 2
+        else:
+            version = 1
         megatron_weights = llama_to_megatron(hf_weights, size, llama_source,
-                                             version=1 if model_name == "llama" else 2)
+                                             version=version)
 
     # set args
     dtype = megatron_weights["embedding"]["word_embeddings.weight"].dtype
@@ -324,13 +338,29 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
             "use_rms_norm": True,
             "tie_embed_logits": False,
             "tokenizer_type": "SentencePieceTokenizer",
-            
             "max_position_embeddings": 32768,
             "seq_length": 32768,
             "layernorm_epsilon": 1e-5,
             "rope_theta": 10000.0,
             "sliding_window_size": 4096,
         }
+    elif model_name == "llama3":
+        args = {"num_layers": llama_s2layer[size],
+                "hidden_size": llama_s2hidden[size],
+                "num_attention_heads": llama_s2heads[size],
+                "ffn_hidden_size": llama_s2dense[size],
+                "num_attention_heads_kv": 8,
+                "max_position_embeddings": 8192,
+                "seq_length": 8192,
+                "layernorm_epsilon": 1e-5,
+                "rope_theta": 5e5,
+                "parallel_attn": False,
+                "make_vocab_size_divisible_by": 128,
+                "glu_activation": "swiglu",
+                "padded_vocab_size": 128256,
+                "use_rms_norm": True,
+                "tie_embed_logits": False,
+                "tokenizer_type": "TikTokenTokenizer"}
     else:  # llama1, llama2, codellama
         args = {"num_layers": llama_s2layer[size],
                 "hidden_size": llama_s2hidden[size],
@@ -421,8 +451,8 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
 if __name__ == "__main__":
     parser = ArgumentParser(description="Convert Huggingface llama or falcon weights to "
                                         "megatron-compatible weights")
-    parser.add_argument("model", choices={"falcon", "llama", "llama2", "codellama", "mistral"})
-    parser.add_argument("--size", default=7, choices={7, 13, 30, 34, 40, 65, 70}, type=int,
+    parser.add_argument("model", choices={"falcon", "llama", "llama2", "codellama", "mistral", "llama3"})
+    parser.add_argument("--size", default=7, choices={7, 8, 13, 30, 34, 40, 65, 70}, type=int,
                         help="The size of the model")
     parser.add_argument("--out", type=Path,
                         help="Directory to store the megatron weights (as checkpoint)")
@@ -444,6 +474,6 @@ if __name__ == "__main__":
     elif args.model == "mistral":
         assert args.size in {7}
     else:
-        assert args.size in {7, 13, 70}
+        assert args.size in {7, 8, 13, 70}
 
     main(args.model, args.size, args.out, args.cache_dir, args.model_path)

@@ -122,7 +122,7 @@ def get_args():
     group = parser.add_argument_group(title='tokenizer')
     group.add_argument('--tokenizer_type', type=str, required=True,
                        choices=['BertWordPieceLowerCase','BertWordPieceCase',
-                                'GPT2BPETokenizer', 'SentencePieceTokenizer', 'FalconTokenizer'],
+                                'GPT2BPETokenizer', 'SentencePieceTokenizer', 'FalconTokenizer', 'TikTokenTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--vocab_file', type=str, default=None,
                        help='Path to the vocab file')
@@ -222,7 +222,8 @@ def main():
 
     encoder = Encoder(args)
     vocab_size = build_tokenizer(args).vocab_size
-    special_tokens = build_tokenizer(args)._special_tokens
+    eos_token_id = build_tokenizer(args)._eos_id
+
     fs = map(open, args.input)
     processed_data = []
     with Pool(args.workers, initializer=encoder.initializer) as pool, \
@@ -261,7 +262,7 @@ def main():
     if args.do_packing:
         assert args.max_packing_size > 0
         packed_tokens, packed_roles, packed_weights = ffd_packing(
-            processed_data, args.max_packing_size, eos_token=[special_tokens["</s>"]]
+            processed_data, args.max_packing_size, eos_token=[eos_token_id]
         )
 
         with DatasetWriter(
