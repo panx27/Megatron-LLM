@@ -22,6 +22,8 @@ from typing import (
     TypedDict,
     Union,
 )
+import json
+
 
 def build_tokenizer(args):
     """Initialize tokenizer."""
@@ -49,7 +51,7 @@ def build_tokenizer(args):
                                             vocab_extra_ids_list=args.vocab_extra_ids_list, new_tokens=args.new_tokens)
     elif args.tokenizer_type == 'TikTokenTokenizer':
         tokenizer = _TikTokenTokenizer(args.vocab_file, vocab_extra_ids=args.vocab_extra_ids,
-                                            vocab_extra_ids_list=args.vocab_extra_ids_list, new_tokens=args.new_tokens)
+                                            vocab_extra_ids_list=args.vocab_extra_ids_list, new_tokens=args.new_tokens, vocab_extra_ids_path=args.vocab_extra_ids_path)
     elif args.tokenizer_type == 'FalconTokenizer':
         tokenizer = _FalconTokenizer(vocab_extra_ids_list=args.vocab_extra_ids_list, new_tokens=args.new_tokens)
     else:
@@ -522,7 +524,7 @@ class _SentencePieceTokenizer(AbstractTokenizer):
 class _TikTokenTokenizer(AbstractTokenizer):
     """TikTokenTokenizer-Megatron wrapper"""
 
-    def __init__(self, model_path, vocab_extra_ids=0, vocab_extra_ids_list=None, new_tokens=True):
+    def __init__(self, model_path, vocab_extra_ids=0, vocab_extra_ids_list=None, new_tokens=True, vocab_extra_ids_path=None, num_reserved_special_tokens=256):
         name = 'TikTokenTokenizer'
         super().__init__(name)
 
@@ -531,7 +533,7 @@ class _TikTokenTokenizer(AbstractTokenizer):
 
         self.special_tokens: Dict[str, int]
 
-        self.num_reserved_special_tokens = 256
+        self.num_reserved_special_tokens = num_reserved_special_tokens
 
         self.pat_str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"  # noqa: E501
 
@@ -539,26 +541,52 @@ class _TikTokenTokenizer(AbstractTokenizer):
 
         mergeable_ranks = load_tiktoken_bpe(model_path)
         num_base_tokens = len(mergeable_ranks)
-        special_tokens = [
-            "<|begin_of_text|>",
-            "<|end_of_text|>",
-            "<|reserved_special_token_0|>",
-            "<|reserved_special_token_1|>",
-            "<|reserved_special_token_2|>",
-            "<|reserved_special_token_3|>",
-            "<|start_header_id|>",
-            "<|end_header_id|>",
-            "<|reserved_special_token_4|>",
-            "<|eot_id|>",  # end of turn
-        ]
+
+        special_tokens = []
         if vocab_extra_ids_list:
             vocab_extra_ids_list = vocab_extra_ids_list.split(",")
-        special_tokens += vocab_extra_ids_list
+            special_tokens += vocab_extra_ids_list
+        if vocab_extra_ids_path:
+            with open(vocab_extra_ids_path, "r") as f:
+                _vocab_extra_ids = json.load(f)
+            _vocab_extra_ids = _vocab_extra_ids["added_tokens_decoder"]
+            special_tokens += [_vocab_extra_ids[x]["content"] for x in _vocab_extra_ids]
+
+        # special_tokens = [
+        #     "<|begin_of_text|>",
+        #     "<|end_of_text|>",
+        #     "<|reserved_special_token_0|>",
+        #     "<|reserved_special_token_1|>",
+        #     "<|reserved_special_token_2|>",
+        #     "<|reserved_special_token_3|>",
+        #     "<|start_header_id|>",
+        #     "<|end_header_id|>",
+        #     "<|reserved_special_token_4|>",
+        #     "<|eot_id|>",  # end of turn
+        # ]
+        # if vocab_extra_ids_list:
+        #     vocab_extra_ids_list = vocab_extra_ids_list.split(",")
+        # special_tokens += vocab_extra_ids_list
+        # special_tab_tokens = [
+        #     '\t\t',
+        #     '\t\t\t',
+        #     '\t\t\t\t',
+        #     '\t\t\t\t\t',
+        #     '\t\t\t\t\t\t',
+        #     '\t\t\t\t\t\t\t',
+        #     '\t\t\t\t\t\t\t\t',
+        #     '\t\t\t\t\t\t\t\t\t'
+        # ]
+        # special_tokens += special_tab_tokens
         print("Special tokens added:", special_tokens)
-        num_used_reserved = 5 + len(vocab_extra_ids_list)
+        # num_used_reserved = 5 + len(vocab_extra_ids_list)
+        # special_tokens += [
+        #     f"<|reserved_special_token_{i}|>"
+        #     for i in range(5, self.num_reserved_special_tokens - num_used_reserved)
+        # ]
         special_tokens += [
             f"<|reserved_special_token_{i}|>"
-            for i in range(5, self.num_reserved_special_tokens - num_used_reserved)
+            for i in range(0, self.num_reserved_special_tokens - len(special_tokens))
         ]
         self.special_tokens = {
             token: num_base_tokens + i for i, token in enumerate(special_tokens)

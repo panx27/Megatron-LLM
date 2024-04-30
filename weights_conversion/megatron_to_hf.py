@@ -584,7 +584,7 @@ def main():
     parser.add_argument("--input_dir", help="Location of Megatron weights",
                         required=True)
     parser.add_argument("--num_output_shards", type=int, default=1)
-    parser.add_argument("--model", choices={"falcon", "llama", "llama2", "codellama", "mistral"},
+    parser.add_argument("--model", choices={"falcon", "llama", "llama2", "codellama", "mistral", "llama3"},
                          default="llama2")
     parser.add_argument("--output_dir", help="Location to write HF model and tokenizer",
                         required=True)
@@ -598,9 +598,11 @@ def main():
                               "Overrides available only bos, cls, eos, mask, pad, sep, unk."))
 
     args = parser.parse_args()
-    if args.model in {"llama", "llama2", "codellama"}:
+    if args.model in {"llama", "llama2", "codellama", "llama3"}:
         eps = 1e-6 if args.model == "llama" else 1e-5
         rope_theta = 1e6 if args.model == "codellama" else 1e4
+        if args.model == "llama3":
+            rope_theta = 5e5
         write_llama_model(
             model_path=args.output_dir,
             input_base_path=args.input_dir,

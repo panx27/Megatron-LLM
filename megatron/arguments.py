@@ -937,6 +937,8 @@ def _add_data_args(parser):
                             'They are used for span masking in the T5 model')
     group.add_argument('--vocab_extra_ids_list', type=str, default=None,
                        help='comma separated list of special vocab ids to add to the tokenizer')
+    group.add_argument('--vocab_extra_ids_path', type=str, default=None,
+                       help='Path to HuggingFace tokenzer_config.json')
     group.add_argument('--seq_length', type=int, default=None,
                        help='Maximum sequence length to process.')
     group.add_argument('--variable_seq_lengths', action='store_true', default=None,
